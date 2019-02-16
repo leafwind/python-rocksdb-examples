@@ -11,6 +11,7 @@ del db
 
 column_families = {}
 
+# kDefaultColumnFamilyName == 'default'
 column_families[b"default"] = rocksdb.ColumnFamilyOptions()
 column_families[b"new_cf"] = rocksdb.ColumnFamilyOptions()
 
