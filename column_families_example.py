@@ -1,40 +1,56 @@
 import rocksdb
+from pprint import pprint
 
-options = rocksdb.Options()
-options.create_if_missing = True
 
-db = rocksdb.DB("rocksdb_column_families_example.db", options)
+def main():
+    # example 1
+    options = rocksdb.Options()
+    options.create_if_missing = True
 
-cf = db.create_column_family(b"new_cf", rocksdb.ColumnFamilyOptions())
+    db = rocksdb.DB('column_families_example.db', options, column_families={}, read_only=False)
+    cf_handle = db.create_column_family(b'new_cf', rocksdb.ColumnFamilyOptions())
+    cf_handle = db.create_column_family(b'test_cf', rocksdb.ColumnFamilyOptions())
+    del db
 
-del db
+    # example 2
+    column_families = {
+        b'default': rocksdb.ColumnFamilyOptions(),  # default CF is already exists, so this is redundant
+        b'new_cf': rocksdb.ColumnFamilyOptions(),
+        b'test_cf': rocksdb.ColumnFamilyOptions(),
+    }
+    db = rocksdb.DB("column_families_example.db", options, column_families=column_families)
+    print(f'after create column family:')
+    pprint(db.column_families)
 
-column_families = {}
+    default_cf = db.get_column_family(b'default')
+    new_cf = db.get_column_family(b'new_cf')
+    test_cf = db.get_column_family(b'test_cf')
 
-# kDefaultColumnFamilyName == 'default'
-column_families[b"default"] = rocksdb.ColumnFamilyOptions()
-column_families[b"new_cf"] = rocksdb.ColumnFamilyOptions()
+    db.put((new_cf, b'key'), b'value')
+    v = db.get((new_cf, b'key'), b'key')
+    print(f'\n(new_cf, key): {v}')
 
-db = rocksdb.DB("rocksdb_column_families_example.db", options, column_families = column_families)
+    print('\nbatch write demo:')
+    batch = rocksdb.WriteBatch()
 
-# e.g) db.column_families
-# [<ColumnFamilyHandle name: b'default', id: 0, state: valid>, <ColumnFamilyHandle name: b'cf', id: 1, state: valid>]
+    batch.put((default_cf, b'key2'), b'value2')
+    batch.put((default_cf, b'default_2'), b'test')
+    batch.put((new_cf, b'key3'), b'value3')
+    batch.delete((default_cf, b'key'))
+    db.write(batch)
 
-default_column_family = db.get_column_family(b'default')
-new_cf_column_family = db.get_column_family(b'new_cf')
+    # IMPORTANT: I don't know what is the reason,
+    # but if you make an iterator of a column family, and then drop this column family
+    # you will get "signal 11: SIGSEGV" or "malloc_consolidate(): invalid chunk size (signal 6: SIGABRT)"
+    # it = db.iteritems(test_cf)  # also iterkeys(), itervalues()
+    # it.seek_to_first()  # need to seek to make iterator valid
+    # print(list(it))
 
-db.put( (new_cf_column_family, b'key'), b'value' )
-print( db.get( (new_cf_column_family, b'key') ) ) # b'value'
+    # drop CF, only default CF remains
+    db.drop_column_family(new_cf)
+    db.drop_column_family(test_cf)
+    pprint(db.column_families)
 
-batch = rocksdb.WriteBatch()
 
-batch.put( (default_column_family, b'key2'), b'value2' )
-batch.put( (new_cf_column_family, b'key3'), b'value3' )
-batch.delete( (default_column_family, b'key') ) 
-
-db.write(batch)
-
-db.drop_column_family(new_cf_column_family)
-
-# e.g) db.column_families
-# [<ColumnFamilyHandle name: b'default', id: 0, state: valid>]
+if __name__ == '__main__':
+    main()
